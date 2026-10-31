@@ -133,3 +133,40 @@ dialog::backdrop { background: rgba(20,30,25,.45); }
 #toast { position: fixed; bottom: calc(5rem + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: var(--brand-dark); color: #fff;
   padding: .55rem 1rem; border-radius: 999px; font-size: .9rem; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #toast.show { opacity: 1; }
+
+/* --- v0.4: ubicación, edad, floración --- */
+.weather-meta { display: flex; justify-content: space-between; gap: .5rem; flex-wrap: wrap; font-size: .85rem; color: var(--muted); margin-top: .5rem; }
+.weather-meta a { color: var(--brand); font-weight: 600; text-decoration: none; }
+.month-card { margin-top: .8rem; font-size: .92rem; background: linear-gradient(135deg, #fff, var(--brand-2)); }
+.month-card b { font-family: "Iowan Old Style", Georgia, serif; color: var(--brand-dark); }
+.month-card div { margin-top: .25rem; }
+.pcard .age { display: block; font-size: .78rem; color: var(--leaf); margin-top: .15rem; }
+.badge { display: inline-block; font-size: .72rem; font-weight: 600; padding: 1px 7px; border-radius: 999px; margin: .3rem .25rem 0 0; }
+.badge.flower { background: var(--brand-2); color: var(--brand-dark); }
+.badge.fruit { background: var(--amber-2); color: var(--amber); }
+.age-big { font-size: .88rem; color: var(--leaf); margin: .3rem 0; }
+.months-view { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.months-view th { text-align: left; font-weight: 500; color: var(--muted); padding: .3rem .4rem .3rem 0; white-space: nowrap; }
+.months-view td { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; padding: .3rem 0; }
+.mo { text-align: center; padding: 4px 0; border-radius: 6px; background: #f6eef0; color: #b9a3aa; font-weight: 600; font-size: .75rem; }
+.mo.on-flower { background: var(--brand); color: #fff; }
+.mo.on-fruit { background: #f5a623; color: #fff; }
+.mo.cur { outline: 2px solid var(--ink); outline-offset: -2px; }
+.months { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin: .1rem 0 .9rem; }
+.mchip input { display: none; }
+.mchip span { display: block; text-align: center; padding: .42rem 0; border: 1px solid var(--line); border-radius: 9px;
+  font-size: .8rem; color: var(--muted); background: #fff; cursor: pointer; }
+.mchip.flower input:checked + span { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.mchip.fruit input:checked + span { background: #f5a623; border-color: #f5a623; color: #fff; font-weight: 600; }
+.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--line); border-radius: 11px;
+  overflow: hidden; margin: .1rem 0 .8rem; background: #fff; }
+.segmented label { margin: 0; }
+.segmented input { display: none; }
+.segmented span { display: block; text-align: center; padding: .55rem 0; color: var(--muted); cursor: pointer; font-size: .92rem; }
+.segmented input:checked + span { background: var(--leaf); color: #fff; font-weight: 600; }
+.search-row { display: flex; gap: .4rem; margin-bottom: .5rem; }
+.search-row input { flex: 1; margin-top: 0 !important; }
+.loc-opt { display: block; width: 100%; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  padding: .5rem .7rem; margin-bottom: .35rem; font: inherit; cursor: pointer; color: var(--ink); }
+.loc-opt span { display: block; font-size: .8rem; color: var(--muted); }
+.loc-opt:hover { border-color: var(--brand); }

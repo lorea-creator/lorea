@@ -23,7 +23,9 @@
     <section id="view-hoy" class="view active">
       <div id="sync-banner"></div>
       <div id="weather" class="weather"></div>
+      <div id="weather-meta" class="weather-meta"></div>
       <div id="alerts"></div>
+      <div id="this-month"></div>
       <h2>Tareas de hoy <small id="season"></small></h2>
       <div id="tasks"></div>
       <h3 class="muted-h">Próximas</h3>
@@ -52,12 +54,24 @@
       </div>
 
       <h2>Tiempo y avisos</h2>
-      <form id="settings-form" class="card form">
-        <label>Ubicación<input name="location"></label>
-        <div class="two">
-          <label>Latitud<input name="lat" type="number" step="0.0001" inputmode="decimal"></label>
-          <label>Longitud<input name="lon" type="number" step="0.0001" inputmode="decimal"></label>
+      <form id="settings-form" class="card form" novalidate>
+        <p id="loc-current" style="margin-top:0"></p>
+        <label>Cambiar ubicación (ciudad o pueblo de cualquier país)</label>
+        <div class="search-row">
+          <input name="q" placeholder="Ej.: Castellbisbal, Lima, Lyon…" autocomplete="off">
+          <button type="button" class="btn" id="loc-search">Buscar</button>
         </div>
+        <div id="loc-results"></div>
+        <details class="small" style="margin:.4rem 0 .8rem">
+          <summary>Coordenadas a mano</summary>
+          <div class="two" style="margin-top:.5rem">
+            <label>Latitud<input name="lat" type="number" step="0.0001" inputmode="decimal"></label>
+            <label>Longitud<input name="lon" type="number" step="0.0001" inputmode="decimal"></label>
+          </div>
+        </details>
+        <label>Web del tiempo de tu localidad (opcional)
+          <input name="weather_url" type="text" inputmode="url" autocorrect="off" autocapitalize="off" placeholder="https://www.aemet.es/…"></label>
+        <p class="muted small" style="margin-top:-.3rem">Aparecerá como enlace en <b>Hoy</b>. Las alertas de riego y helada siguen usando Open-Meteo.</p>
         <label>Posponer riego exterior si llueve (mm, 48 h pasadas + mañana)<input name="rain_skip_mm" type="number" step="0.5" inputmode="decimal"></label>
         <div class="two">
           <label>Aviso calor (°C máx.)<input name="heat_c" type="number" inputmode="numeric"></label>
@@ -79,12 +93,13 @@
       <h3 id="plant-form-title">Planta</h3>
       <label>Nombre<input name="name" required></label>
       <label>Especie<input name="species"></label>
-      <div class="two">
-        <label>Dónde
-          <select name="place"><option>Exterior</option><option>Interior</option></select>
-        </label>
-        <label>Zona<input name="zone" placeholder="terraza, salón…"></label>
+      <label>Ubicación</label>
+      <div class="segmented">
+        <label><input type="radio" name="place" value="Exterior" checked><span>🌤️ Exterior</span></label>
+        <label><input type="radio" name="place" value="Interior"><span>🏠 Interior</span></label>
       </div>
+      <label>Zona<input name="zone" placeholder="terraza, salón, bancal…"></label>
+      <label>En casa desde (plantación o compra)<input name="since" type="date"></label>
       <div class="two">
         <label>Plantada en
           <select name="container"><option>Maceta</option><option>Suelo</option><option>Jardinera</option></select>
@@ -94,6 +109,10 @@
         </label>
       </div>
       <label class="check"><input type="checkbox" name="frost_sensitive"> Sensible a heladas</label>
+      <label>🌺 Meses de floración</label>
+      <div class="months" data-kind="flower"></div>
+      <label>🍑 Meses de fruto</label>
+      <div class="months" data-kind="fruit"></div>
       <table class="season-table">
         <thead><tr><th></th><th>Prim.</th><th>Ver.</th><th>Otoño</th><th>Inv.</th></tr></thead>
         <tbody>

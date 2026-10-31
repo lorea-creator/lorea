@@ -4,6 +4,8 @@ const SEASON_LABEL = { primavera: "Primavera", verano: "Verano", otono: "Otoño"
 const LOG_TYPES = { riego: "💧 Riego", abono: "🌱 Abono", poda: "✂️ Poda", tratamiento: "🧴 Tratamiento",
   trasplante: "🪴 Trasplante", observacion: "📝 Observación" };
 const BACKUP_EVERY_DAYS = 7;
+const MONTHS_FULL = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 // Valores orientativos de partida: ajústalos en la app.
 const SEED = {
@@ -34,9 +36,25 @@ const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOff
 const daysBetween = (a, b) => Math.round((new Date(b + "T12:00") - new Date(a + "T12:00")) / 86400000);
 const fmtDate = (d) => new Date(d + "T12:00").toLocaleDateString("es-ES", { day: "numeric", month: "short" });
 const newId = () => Math.random().toString(36).slice(2, 12);
+const thisMonth = () => new Date().getMonth() + 1;
 
+// "3 años y 2 meses" desde una fecha AAAA-MM-DD
+function ageText(since) {
+  if (!since) return "";
+  const a = new Date(since + "T12:00"), b = new Date();
+  if (a > b) return "fecha futura";
+  let months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  if (b.getDate() < a.getDate()) months--;
+  if (months < 1) { const d = daysBetween(since, today()); return d === 1 ? "1 día" : `${d} días`; }
+  const y = Math.floor(months / 12), m = months % 12;
+  const ys = y ? (y === 1 ? "1 año" : `${y} años`) : "", ms = m ? (m === 1 ? "1 mes" : `${m} meses`) : "";
+  return [ys, ms].filter(Boolean).join(" y ");
+}
+
+// Estación según el mes; en el hemisferio sur (latitud negativa) se invierten
 function seasonOf(d = new Date()) {
-  const m = d.getMonth() + 1;
+  let m = d.getMonth() + 1;
+  if (Number(DB?.settings?.lat) < 0) m = ((m + 5) % 12) + 1;
   if (m >= 3 && m <= 5) return "primavera";
   if (m >= 6 && m <= 8) return "verano";
   if (m >= 9 && m <= 11) return "otono";
@@ -50,16 +68,15 @@ function toast(msg, ms = 2200) {
 
 // ---------- Datos ----------
 function freshDB() {
-  return { version: 1, settings: { ...SEED.settings },
-    plants: SEED.plants.map((p) => ({ ...p, id: newId(), photo: null, log: [], created: today() })),
-    sync: { lastBackup: null } };
+  return normalize({ settings: { ...SEED.settings },
+    plants: SEED.plants.map((p) => ({ ...p, id: newId(), photo: null, log: [], created: today() })) }, { lastBackup: null });
 }
 
 function normalize(data, keepSync) {
   const db = { version: 1, settings: { ...SEED.settings, ...(data.settings || {}) }, plants: data.plants || [],
     sync: keepSync || { lastBackup: null } };
   for (const p of db.plants) {
-    p.id ||= newId(); p.log ||= [];
+    p.id ||= newId(); p.log ||= []; p.flower ||= []; p.fruit ||= []; p.since ||= ""; p.place ||= "Exterior";
     if (p.photo && !String(p.photo).startsWith("data:")) p.photo = null; // fotos de la versión de ordenador no viajan
   }
   return db;
@@ -156,6 +173,15 @@ function renderToday() {
         <div class="t">${Math.round(w.max)}° / ${Math.round(w.min)}°</div>
         <div class="r">💧 ${w.rain.toFixed(1)} mm${w.date >= t ? `<br>${w.prob}%` : ""}</div></div>`).join("")
     : `<div class="day" style="flex-basis:100%"><div class="d">Tiempo</div><div class="r">Sin datos (¿sin conexión?)</div></div>`;
+  const s0 = DB.settings;
+  $("#weather-meta").innerHTML = `<span>📍 ${esc(s0.location || "Sin ubicación")}${s0.country ? ", " + esc(s0.country) : ""}</span>` +
+    (safeUrl(s0.weather_url) ? `<a href="${esc(s0.weather_url)}" target="_blank" rel="noopener">Ver en ${esc(hostOf(s0.weather_url))} ↗</a>` : "");
+  const m = thisMonth();
+  const bloom = DB.plants.filter((p) => p.flower.includes(m)), fruit = DB.plants.filter((p) => p.fruit.includes(m));
+  $("#this-month").innerHTML = bloom.length || fruit.length
+    ? `<div class="card month-card"><b>En ${MONTHS_FULL[m - 1]}</b>
+        ${bloom.length ? `<div>🌺 Florecen: ${bloom.map((p) => esc(p.name)).join(", ")}</div>` : ""}
+        ${fruit.length ? `<div>🍑 Dan fruto: ${fruit.map((p) => esc(p.name)).join(", ")}</div>` : ""}</div>` : "";
 
   const { due, upcoming, ws } = computeTasks();
   const s = DB.settings, alerts = [];
@@ -183,16 +209,33 @@ function renderToday() {
   $("#upcoming").innerHTML = upcoming.length ? upcoming.map((i) => taskHtml(i, false)).join("") : `<div class="empty">Nada en los próximos 3 días.</div>`;
 }
 
+function safeUrl(u) { return /^https?:\/\/[^\s]+$/i.test(u || ""); }
+function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } }
+
+function monthStrip(p) {
+  const row = (arr, cls) => MONTHS.map((mo, i) => `<span class="mo ${arr.includes(i + 1) ? cls : ""} ${i + 1 === thisMonth() ? "cur" : ""}">${mo[0]}</span>`).join("");
+  if (!p.flower.length && !p.fruit.length) return "";
+  return `<div class="card"><table class="months-view">
+    ${p.flower.length ? `<tr><th>🌺 Flor</th><td>${row(p.flower, "on-flower")}</td></tr>` : ""}
+    ${p.fruit.length ? `<tr><th>🍑 Fruto</th><td>${row(p.fruit, "on-fruit")}</td></tr>` : ""}
+  </table></div>`;
+}
+
 function renderPlants() {
   $("#plant-grid").innerHTML = DB.plants.map((p) => `
     <div class="pcard" data-open="${p.id}">${thumb(p, "img")}
-      <div class="body"><b>${esc(p.name)}</b><span>${esc(p.place)}${p.zone ? " · " + esc(p.zone) : ""}</span></div>
+      <div class="body"><b>${esc(p.name)}</b><span>${p.place === "Interior" ? "🏠" : "🌤️"} ${esc(p.place)}${p.zone ? " · " + esc(p.zone) : ""}</span>
+        ${p.since ? `<span class="age">${ageText(p.since)}</span>` : ""}
+        ${p.flower.includes(thisMonth()) ? `<span class="badge flower">🌺 En flor</span>` : ""}${p.fruit.includes(thisMonth()) ? `<span class="badge fruit">🍑 Fruto</span>` : ""}</div>
     </div>`).join("") || `<div class="empty">Aún no hay plantas.</div>`;
 }
 
 function renderSettings() {
   const f = $("#settings-form");
-  for (const k of ["location", "lat", "lon", "rain_skip_mm", "heat_c", "frost_c"]) f.elements[k].value = DB.settings[k] ?? "";
+  for (const k of ["lat", "lon", "rain_skip_mm", "heat_c", "frost_c", "weather_url"]) f.elements[k].value = DB.settings[k] ?? "";
+  const s = DB.settings;
+  $("#loc-current").innerHTML = `📍 <b>${esc(s.location || "Sin ubicación")}</b>${s.region ? ", " + esc(s.region) : ""}${s.country ? ", " + esc(s.country) : ""}
+    <span class="muted small">(${Number(s.lat).toFixed(2)}, ${Number(s.lon).toFixed(2)}${Number(s.lat) < 0 ? " · hemisferio sur" : ""})</span>`;
   const age = backupAge();
   $("#sync-status").innerHTML = DB.sync.lastBackup
     ? `Última copia: <b>${new Date(DB.sync.lastBackup).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" })}</b> (${age === 0 ? "hoy" : `hace ${age} d`}). Te avisaré cada ${BACKUP_EVERY_DAYS} días.`
@@ -220,7 +263,8 @@ function renderDetail(id) {
       <div>
         <h2 style="margin-top:0">${esc(p.name)}</h2>
         <div class="muted"><i>${esc(p.species)}</i></div>
-        <div class="facts"><span>${esc(p.place)}</span>${p.zone ? `<span>${esc(p.zone)}</span>` : ""}<span>${esc(p.container)}</span>
+        ${p.since ? `<div class="age-big">🗓️ Contigo desde ${new Date(p.since + "T12:00").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })} · <b>${ageText(p.since)}</b></div>` : ""}
+        <div class="facts"><span>${p.place === "Interior" ? "🏠" : "🌤️"} ${esc(p.place)}</span>${p.zone ? `<span>${esc(p.zone)}</span>` : ""}<span>${esc(p.container)}</span>
           <span>${esc(p.light)}</span>${p.frost_sensitive ? "<span>❄️ Sensible a heladas</span>" : ""}</div>
       </div>
     </div>
@@ -230,6 +274,7 @@ function renderDetail(id) {
             <tr><th>🌱</th>${SEASONS.map((s) => cell(p.feed, s)).join("")}</tr></table>
           <p class="small muted" style="margin:.6rem 0 0">💧 ${line(status(p, "riego"))}<br>🌱 ${line(status(p, "abono"))}</p>
         </div>
+        ${monthStrip(p)}
         ${p.notes ? `<div class="card small">${esc(p.notes).replace(/\n/g, "<br>")}</div>` : ""}
     <h3 style="margin-top:1.2rem">Diario</h3>
     <form class="log-form" data-log="${p.id}">
@@ -268,6 +313,36 @@ async function exportFile() {
   await save(); render(); toast("Copia hecha ✓");
 }
 
+// ---------- Buscador de localidad (cualquier país) ----------
+let GEO = [];
+async function searchPlace() {
+  const q = $("#settings-form").elements.q.value.trim();
+  if (q.length < 2) return toast("Escribe al menos 2 letras");
+  $("#loc-results").innerHTML = `<div class="muted small">Buscando…</div>`;
+  try {
+    const r = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=8&language=es&format=json`)).json();
+    GEO = r.results || [];
+  } catch { GEO = null; }
+  $("#loc-results").innerHTML = GEO === null ? `<div class="muted small">Sin conexión. Prueba más tarde.</div>`
+    : !GEO.length ? `<div class="muted small">No he encontrado "${esc(q)}". Prueba con otro nombre o pon las coordenadas a mano.</div>`
+    : GEO.map((g, i) => `<button type="button" class="loc-opt" data-geo="${i}"><b>${esc(g.name)}</b>
+        <span>${[g.admin1, g.country].filter(Boolean).map(esc).join(", ")}</span></button>`).join("");
+}
+
+async function pickPlace(i) {
+  const g = GEO[i];
+  Object.assign(DB.settings, { location: g.name, region: g.admin1 || "", country: g.country || "",
+    lat: Math.round(g.latitude * 10000) / 10000, lon: Math.round(g.longitude * 10000) / 10000 });
+  $("#loc-results").innerHTML = ""; $("#settings-form").elements.q.value = "";
+  await save(); render(); loadWeather(); toast(`Ubicación: ${g.name}`);
+}
+
+function buildMonthPickers() {
+  document.querySelectorAll(".months").forEach((box) => {
+    box.innerHTML = MONTHS.map((m, i) => `<label class="mchip ${box.dataset.kind}"><input type="checkbox" name="${box.dataset.kind}" value="${i + 1}"><span>${m}</span></label>`).join("");
+  });
+}
+
 // ---------- Formulario de planta ----------
 function openPlantForm(p) {
   editingId = p?.id || null;
@@ -275,7 +350,10 @@ function openPlantForm(p) {
   f.reset();
   $("#plant-form-title").textContent = p ? "Editar planta" : "Nueva planta";
   if (p) {
-    for (const k of ["name", "species", "place", "zone", "container", "light", "notes"]) f.elements[k].value = p[k] ?? "";
+    for (const k of ["name", "species", "zone", "container", "light", "notes", "since"]) f.elements[k].value = p[k] ?? "";
+    f.elements.place.value = p.place || "Exterior";
+    for (const kind of ["flower", "fruit"])
+      f.querySelectorAll(`input[name=${kind}]`).forEach((c) => (c.checked = (p[kind] || []).includes(Number(c.value))));
     f.elements.frost_sensitive.checked = !!p.frost_sensitive;
     for (const s of SEASONS) {
       f.elements["water." + s].value = p.water?.[s] ?? "";
@@ -289,7 +367,9 @@ $("#plant-dialog").addEventListener("close", async () => {
   if ($("#plant-dialog").returnValue !== "ok") return;
   const f = $("#plant-form");
   const data = { water: {}, feed: {} };
-  for (const k of ["name", "species", "place", "zone", "container", "light", "notes"]) data[k] = f.elements[k].value.trim();
+  for (const k of ["name", "species", "place", "zone", "container", "light", "notes", "since"]) data[k] = f.elements[k].value.trim();
+  for (const kind of ["flower", "fruit"])
+    data[kind] = [...f.querySelectorAll(`input[name=${kind}]:checked`)].map((c) => Number(c.value));
   data.frost_sensitive = f.elements.frost_sensitive.checked;
   for (const s of SEASONS) {
     data.water[s] = Number(f.elements["water." + s].value || 0);
@@ -326,6 +406,8 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.back !== undefined) return show("plantas");
   if (t.id === "export" || t.id === "export-banner") return exportFile();
   if (t.id === "add-plant") return openPlantForm(null);
+  if (t.id === "loc-search") return searchPlace();
+  if (t.dataset.geo) return pickPlace(Number(t.dataset.geo));
   if (t.dataset.edit) return openPlantForm(DB.plants.find((p) => p.id === t.dataset.edit));
   if (t.dataset.del) {
     if (!confirm("¿Eliminar esta planta y su diario?")) return;
@@ -353,10 +435,19 @@ document.addEventListener("submit", async (e) => {
   } else if (f.id === "settings-form") {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(f));
+    delete d.q;
     for (const k of ["lat", "lon", "rain_skip_mm", "heat_c", "frost_c"]) d[k] = Number(d[k]);
+    d.weather_url = d.weather_url.trim();
+    if (d.weather_url && !/^https?:\/\//i.test(d.weather_url)) d.weather_url = "https://" + d.weather_url;
+    if (d.weather_url && !safeUrl(d.weather_url)) return toast("El enlace no es válido");
     Object.assign(DB.settings, d);
     await save(); render(); loadWeather(); toast("Ajustes guardados");
   }
+});
+
+// Enter en el buscador busca, no guarda el formulario
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.name === "q") { e.preventDefault(); searchPlace(); }
 });
 
 document.addEventListener("change", async (e) => {
@@ -379,6 +470,7 @@ document.addEventListener("change", async (e) => {
 
 // ---------- Arranque ----------
 (async function init() {
+  buildMonthPickers();
   const stored = await Store.load();
   DB = stored ? normalize(stored, stored.sync) : freshDB();
   if (!stored) await save();

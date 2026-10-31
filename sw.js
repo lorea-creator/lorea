@@ -1,6 +1,6 @@
 // Service worker: guarda la app para que abra sin conexión.
 // Sube VERSION cada vez que cambies archivos para que el iPhone coja la nueva versión.
-const VERSION = "lorea-v4";
+const VERSION = "lorea-v5";
 const FILES = ["./", "index.html", "styles.css", "app.js", "store.js",
   "manifest.webmanifest", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png", "icons/hibisco.svg"];
 
