@@ -1,8 +1,8 @@
 // Service worker: guarda la app para que abra sin conexión.
 // Sube VERSION cada vez que cambies archivos para que el iPhone coja la nueva versión.
-const VERSION = "lorea-v3";
+const VERSION = "lorea-v4";
 const FILES = ["./", "index.html", "styles.css", "app.js", "store.js",
-  "manifest.webmanifest", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];
+  "manifest.webmanifest", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png", "icons/hibisco.svg"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
