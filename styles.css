@@ -170,3 +170,6 @@ dialog::backdrop { background: rgba(20,30,25,.45); }
   padding: .5rem .7rem; margin-bottom: .35rem; font: inherit; cursor: pointer; color: var(--ink); }
 .loc-opt span { display: block; font-size: .8rem; color: var(--muted); }
 .loc-opt:hover { border-color: var(--brand); }
+
+/* casilla "bajo techo": solo tiene sentido en exterior */
+.form:has(input[name=place][value=Interior]:checked) .covered-opt { display: none; }

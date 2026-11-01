@@ -1,7 +1,7 @@
 // Lorea - web app (PWA). Datos en el iPhone + copia semanal exportando un archivo (sin conexión directa con Google).
 const SEASONS = ["primavera", "verano", "otono", "invierno"];
 const SEASON_LABEL = { primavera: "Primavera", verano: "Verano", otono: "Otoño", invierno: "Invierno" };
-const LOG_TYPES = { riego: "💧 Riego", abono: "🌱 Abono", poda: "✂️ Poda", tratamiento: "🧴 Tratamiento",
+const LOG_TYPES = { riego: "💧 Riego", lluvia: "🌧️ Lluvia", abono: "🌱 Abono", poda: "✂️ Poda", tratamiento: "🧴 Tratamiento",
   trasplante: "🪴 Trasplante", observacion: "📝 Observación" };
 const BACKUP_EVERY_DAYS = 7;
 const MONTHS_FULL = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -96,21 +96,45 @@ async function loadWeather() {
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
       `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max` +
-      `&past_days=2&forecast_days=5&timezone=auto`;
+      `&past_days=7&forecast_days=5&timezone=auto`;
     const d = (await (await fetch(url)).json()).daily;
     WEATHER = d.time.map((t, i) => ({ date: t, max: d.temperature_2m_max[i], min: d.temperature_2m_min[i],
       rain: d.precipitation_sum[i] ?? 0, prob: d.precipitation_probability_max[i] ?? 0 }));
+    if (registerRain()) { await save(); renderPlants(); }
   } catch { WEATHER = null; }
   renderToday();
+}
+
+// ¿Le cae la lluvia? Exterior y no bajo techo
+const getsRain = (p) => p.place === "Exterior" && !p.covered;
+const rainMin = () => Number(DB.settings.rain_skip_mm || 5);
+
+// Días ya pasados con lluvia suficiente → se apuntan como riego en las plantas que la reciben.
+// Se miran los últimos 7 días, así no se pierde nada aunque no abras la app en unos días.
+function registerRain() {
+  if (!WEATHER) return false;
+  const t = today();
+  let added = false;
+  for (const w of WEATHER) {
+    if (w.date >= t || w.rain < rainMin()) continue;
+    for (const p of DB.plants.filter(getsRain)) {
+      if ((p.created || "") > w.date) continue; // planta añadida después de esa lluvia
+      if (p.log.some((e) => e.type === "lluvia" && e.date === w.date)) continue;
+      p.log.push({ id: newId(), type: "lluvia", date: w.date, note: `${w.rain.toFixed(1)} mm (automático)`, auto: true });
+      p.log.sort((a, b) => b.date.localeCompare(a.date));
+      added = true;
+    }
+  }
+  return added;
 }
 
 function weatherSummary() {
   if (!WEATHER) return null;
   const idx = WEATHER.findIndex((w) => w.date === today());
   if (idx < 0) return null;
-  const recent = WEATHER.slice(Math.max(0, idx - 2), idx + 1).reduce((s, w) => s + w.rain, 0);
+  // La lluvia ya caída se apunta como riego (registerRain); aquí solo cuenta la de hoy y la prevista para mañana
   const next3 = WEATHER.slice(idx, idx + 3);
-  return { rain: recent + (WEATHER[idx + 1]?.rain ?? 0),
+  return { rain: (WEATHER[idx]?.rain ?? 0) + (WEATHER[idx + 1]?.rain ?? 0),
     minNext: Math.min(...next3.map((w) => w.min)), maxNext: Math.max(...next3.map((w) => w.max)) };
 }
 
@@ -118,9 +142,11 @@ function weatherSummary() {
 function status(plant, type) {
   const every = Number((type === "riego" ? plant.water : plant.feed)?.[seasonOf()] || 0);
   if (!every) return { active: false };
-  const last = plant.log.filter((e) => e.type === type).map((e) => e.date).sort().pop() || null;
+  const counts = type === "riego" ? ["riego", "lluvia"] : [type]; // la lluvia también reinicia el riego
+  const lastEntry = plant.log.filter((e) => counts.includes(e.type)).sort((a, b) => a.date.localeCompare(b.date)).pop();
+  const last = lastEntry?.date || null;
   const since = last ? daysBetween(last, today()) : null;
-  return { active: true, every, last, since, dueIn: last ? every - since : 0 };
+  return { active: true, every, last, since, dueIn: last ? every - since : 0, byRain: lastEntry?.type === "lluvia" };
 }
 
 function computeTasks() {
@@ -130,7 +156,7 @@ function computeTasks() {
     for (const type of ["riego", "abono"]) {
       const st = status(p, type);
       if (!st.active) continue;
-      const skip = type === "riego" && ws && p.place === "Exterior" && ws.rain >= Number(DB.settings.rain_skip_mm || 5)
+      const skip = type === "riego" && ws && getsRain(p) && st.dueIn <= 1 && ws.rain >= rainMin()
         ? `lluvia ${ws.rain.toFixed(1)} mm` : null;
       const item = { p, type, st, skip };
       if (st.dueIn <= 0) due.push(item); else if (st.dueIn <= 3) upcoming.push(item);
@@ -168,7 +194,7 @@ function renderToday() {
   $("#season").textContent = "· " + SEASON_LABEL[seasonOf()];
   const t = today();
   $("#weather").innerHTML = WEATHER
-    ? WEATHER.map((w) => `<div class="day ${w.date < t ? "past" : ""}">
+    ? WEATHER.filter((w) => daysBetween(w.date, t) <= 2).map((w) => `<div class="day ${w.date < t ? "past" : ""}">
         <div class="d">${w.date === t ? "Hoy" : new Date(w.date + "T12:00").toLocaleDateString("es-ES", { weekday: "short", day: "numeric" })}</div>
         <div class="t">${Math.round(w.max)}° / ${Math.round(w.min)}°</div>
         <div class="r">💧 ${w.rain.toFixed(1)} mm${w.date >= t ? `<br>${w.prob}%` : ""}</div></div>`).join("")
@@ -192,15 +218,15 @@ function renderToday() {
       alerts.push(`<div class="alert frost">❄️ Mínimas de ${Math.round(ws.minNext)}° en los próximos días. Protege: ${sens.map((p) => esc(p.name)).join(", ")}.</div>`);
     if (ws.maxNext >= Number(s.heat_c ?? 32) && ext.length)
       alerts.push(`<div class="alert heat">🔥 Máximas de ${Math.round(ws.maxNext)}°. Revisa la tierra de las macetas de exterior: pueden necesitar riego antes.</div>`);
-    if (ws.rain >= Number(s.rain_skip_mm || 5))
-      alerts.push(`<div class="alert rain">🌧️ ${ws.rain.toFixed(1)} mm de lluvia (recientes + mañana). Riego de exterior pospuesto; lo que esté bajo techo sí puede necesitarlo.</div>`);
+    if (ws.rain >= rainMin() && DB.plants.some(getsRain))
+      alerts.push(`<div class="alert rain">🌧️ ${ws.rain.toFixed(1)} mm de lluvia entre hoy y mañana. Riego pospuesto en las de exterior; las de interior y las que están bajo techo siguen su calendario.</div>`);
   }
   $("#alerts").innerHTML = alerts.join("");
 
   const taskHtml = (it, showBtn) => {
     const tag = it.skip ? `<span class="tag skip">Pospuesto · ${it.skip}</span>`
       : `<span class="tag ${it.type === "riego" ? "water" : "feed"}">${it.type === "riego" ? "Regar" : "Abonar"}</span>`;
-    const when = it.st.last ? `hace ${it.st.since} d · cada&nbsp;${it.st.every}&nbsp;d` : `sin registros · cada&nbsp;${it.st.every}&nbsp;d`;
+    const when = it.st.last ? `${it.st.byRain ? "llovió" : "regada"} hace ${it.st.since} d · cada&nbsp;${it.st.every}&nbsp;d` : `sin registros · cada&nbsp;${it.st.every}&nbsp;d`;
     return `<div class="task">${thumb(it.p)}
       <div class="info"><b>${esc(it.p.name)}</b><span>${tag} ${when}${showBtn ? "" : ` · en ${it.st.dueIn} d`}</span></div>
       ${showBtn ? `<button class="btn small" data-done="${it.p.id}" data-type="${it.type}">Hecho</button>` : ""}</div>`;
@@ -224,7 +250,7 @@ function monthStrip(p) {
 function renderPlants() {
   $("#plant-grid").innerHTML = DB.plants.map((p) => `
     <div class="pcard" data-open="${p.id}">${thumb(p, "img")}
-      <div class="body"><b>${esc(p.name)}</b><span>${p.place === "Interior" ? "🏠" : "🌤️"} ${esc(p.place)}${p.zone ? " · " + esc(p.zone) : ""}</span>
+      <div class="body"><b>${esc(p.name)}</b><span>${p.place === "Interior" ? "🏠" : "🌤️"} ${esc(p.place)}${p.covered ? " · bajo techo" : ""}${p.zone ? " · " + esc(p.zone) : ""}</span>
         ${p.since ? `<span class="age">${ageText(p.since)}</span>` : ""}
         ${p.flower.includes(thisMonth()) ? `<span class="badge flower">🌺 En flor</span>` : ""}${p.fruit.includes(thisMonth()) ? `<span class="badge fruit">🍑 Fruto</span>` : ""}</div>
     </div>`).join("") || `<div class="empty">Aún no hay plantas.</div>`;
@@ -248,7 +274,7 @@ function renderDetail(id) {
   const cur = seasonOf();
   const cell = (obj, s) => `<td class="${s === cur ? "now" : ""}">${Number(obj?.[s]) ? obj[s] + " d" : "—"}</td>`;
   const line = (st) => !st.active ? "no en esta estación" : !st.last ? "sin registros"
-    : `último ${fmtDate(st.last)}, ${st.dueIn <= 0 ? "<b>toca ya</b>" : `toca en ${st.dueIn} d`}`;
+    : `último ${fmtDate(st.last)}${st.byRain ? " (lluvia)" : ""}, ${st.dueIn <= 0 ? "<b>toca ya</b>" : `toca en ${st.dueIn} d`}`;
   $("#view-detalle").innerHTML = `
     <div class="row-between" style="margin-top:1rem">
       <button class="btn" data-back>← Plantas</button>
@@ -264,7 +290,7 @@ function renderDetail(id) {
         <h2 style="margin-top:0">${esc(p.name)}</h2>
         <div class="muted"><i>${esc(p.species)}</i></div>
         ${p.since ? `<div class="age-big">🗓️ Contigo desde ${new Date(p.since + "T12:00").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })} · <b>${ageText(p.since)}</b></div>` : ""}
-        <div class="facts"><span>${p.place === "Interior" ? "🏠" : "🌤️"} ${esc(p.place)}</span>${p.zone ? `<span>${esc(p.zone)}</span>` : ""}<span>${esc(p.container)}</span>
+        <div class="facts"><span>${p.place === "Interior" ? "🏠" : "🌤️"} ${esc(p.place)}</span>${p.covered ? "<span>☂️ Bajo techo</span>" : ""}${p.zone ? `<span>${esc(p.zone)}</span>` : ""}<span>${esc(p.container)}</span>
           <span>${esc(p.light)}</span>${p.frost_sensitive ? "<span>❄️ Sensible a heladas</span>" : ""}</div>
       </div>
     </div>
@@ -355,6 +381,7 @@ function openPlantForm(p) {
     for (const kind of ["flower", "fruit"])
       f.querySelectorAll(`input[name=${kind}]`).forEach((c) => (c.checked = (p[kind] || []).includes(Number(c.value))));
     f.elements.frost_sensitive.checked = !!p.frost_sensitive;
+    f.elements.covered.checked = !!p.covered;
     for (const s of SEASONS) {
       f.elements["water." + s].value = p.water?.[s] ?? "";
       f.elements["feed." + s].value = p.feed?.[s] ?? "";
@@ -371,6 +398,7 @@ $("#plant-dialog").addEventListener("close", async () => {
   for (const kind of ["flower", "fruit"])
     data[kind] = [...f.querySelectorAll(`input[name=${kind}]:checked`)].map((c) => Number(c.value));
   data.frost_sensitive = f.elements.frost_sensitive.checked;
+  data.covered = data.place === "Exterior" && f.elements.covered.checked;
   for (const s of SEASONS) {
     data.water[s] = Number(f.elements["water." + s].value || 0);
     data.feed[s] = Number(f.elements["feed." + s].value || 0);

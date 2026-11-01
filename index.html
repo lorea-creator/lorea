@@ -72,7 +72,8 @@
         <label>Web del tiempo de tu localidad (opcional)
           <input name="weather_url" type="text" inputmode="url" autocorrect="off" autocapitalize="off" placeholder="https://www.aemet.es/…"></label>
         <p class="muted small" style="margin-top:-.3rem">Aparecerá como enlace en <b>Hoy</b>. Las alertas de riego y helada siguen usando Open-Meteo.</p>
-        <label>Posponer riego exterior si llueve (mm, 48 h pasadas + mañana)<input name="rain_skip_mm" type="number" step="0.5" inputmode="decimal"></label>
+        <label>Lluvia que cuenta como riego (mm en un día)<input name="rain_skip_mm" type="number" step="0.5" inputmode="decimal"></label>
+        <p class="muted small" style="margin-top:-.3rem">Si un día llueve esto o más, se apunta como riego en las plantas de exterior que no están bajo techo. Si se espera esa lluvia hoy o mañana, su riego se pospone.</p>
         <div class="two">
           <label>Aviso calor (°C máx.)<input name="heat_c" type="number" inputmode="numeric"></label>
           <label>Aviso helada (°C mín.)<input name="frost_c" type="number" inputmode="numeric"></label>
@@ -98,6 +99,7 @@
         <label><input type="radio" name="place" value="Exterior" checked><span>🌤️ Exterior</span></label>
         <label><input type="radio" name="place" value="Interior"><span>🏠 Interior</span></label>
       </div>
+      <label class="check covered-opt"><input type="checkbox" name="covered"> ☂️ Bajo techo (porche, toldo…): no le llega la lluvia</label>
       <label>Zona<input name="zone" placeholder="terraza, salón, bancal…"></label>
       <label>En casa desde (plantación o compra)<input name="since" type="date"></label>
       <div class="two">
